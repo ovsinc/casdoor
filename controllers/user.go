@@ -45,8 +45,7 @@ func (c *ApiController) GetGlobalUsers() {
 			return
 		}
 
-		c.Data["json"] = maskedUsers
-		c.ServeJSON()
+		c.ResponseOk(maskedUsers)
 	} else {
 		limit := util.ParseInt(limit)
 		count, err := object.GetGlobalUserCount(field, value)
@@ -106,8 +105,7 @@ func (c *ApiController) GetUsers() {
 			return
 		}
 
-		c.Data["json"] = maskedUsers
-		c.ServeJSON()
+		c.ResponseOk(maskedUsers)
 	} else {
 		limit := util.ParseInt(limit)
 		count, err := object.GetUserCount(owner, field, value, groupName)
@@ -208,14 +206,14 @@ func (c *ApiController) GetUser() {
 		return
 	}
 
-	maskedUser, err := object.GetMaskedUser(user)
+	isAdminOrSelf := c.IsAdminOrSelf(user)
+	maskedUser, err := object.GetMaskedUser(user, isAdminOrSelf)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	c.Data["json"] = maskedUser
-	c.ServeJSON()
+	c.ResponseOk(maskedUser)
 }
 
 // UpdateUser
@@ -512,8 +510,7 @@ func (c *ApiController) GetSortedUsers() {
 		return
 	}
 
-	c.Data["json"] = maskedUsers
-	c.ServeJSON()
+	c.ResponseOk(maskedUsers)
 }
 
 // GetUserCount
@@ -540,8 +537,7 @@ func (c *ApiController) GetUserCount() {
 		return
 	}
 
-	c.Data["json"] = count
-	c.ServeJSON()
+	c.ResponseOk(count)
 }
 
 // AddUserkeys
@@ -571,6 +567,6 @@ func (c *ApiController) RemoveUserFromGroup() {
 	name := c.Ctx.Request.Form.Get("name")
 	groupName := c.Ctx.Request.Form.Get("groupName")
 
-	c.Data["json"] = wrapActionResponse(object.RemoveUserFromGroup(owner, name, groupName))
+	c.Data["json"] = wrapActionResponse(object.RemoveUserFromGroup(owner, name, util.GetId(owner, groupName)))
 	c.ServeJSON()
 }

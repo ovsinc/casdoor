@@ -36,6 +36,7 @@ import PopconfirmModal from "./common/modal/PopconfirmModal";
 import {DeleteMfa} from "./backend/MfaBackend";
 import {CheckCircleOutlined, HolderOutlined, UsergroupAddOutlined} from "@ant-design/icons";
 import * as MfaBackend from "./backend/MfaBackend";
+import AccountAvatar from "./account/AccountAvatar";
 
 const {Option} = Select;
 
@@ -74,19 +75,20 @@ class UserEditPage extends React.Component {
 
   getUser() {
     UserBackend.getUser(this.state.organizationName, this.state.userName)
-      .then((data) => {
-        if (data === null) {
+      .then((res) => {
+        if (res.data === null) {
           this.props.history.push("/404");
           return;
         }
 
-        if (data.status === null || data.status !== "error") {
-          this.setState({
-            user: data,
-            multiFactorAuths: data?.multiFactorAuths ?? [],
-          });
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
         }
+
         this.setState({
+          user: res.data,
+          multiFactorAuths: res.data?.multiFactorAuths ?? [],
           loading: false,
         });
       });
@@ -107,7 +109,7 @@ class UserEditPage extends React.Component {
     OrganizationBackend.getOrganizations("admin")
       .then((res) => {
         this.setState({
-          organizations: (res.msg === undefined) ? res : [],
+          organizations: res.data || [],
         });
       });
   }
@@ -116,7 +118,7 @@ class UserEditPage extends React.Component {
     ApplicationBackend.getApplicationsByOrganization("admin", organizationName)
       .then((res) => {
         this.setState({
-          applications: (res.msg === undefined) ? res : [],
+          applications: res.data || [],
         });
       });
   }
@@ -128,18 +130,28 @@ class UserEditPage extends React.Component {
           Setting.showMessage("error", res.msg);
           return;
         }
-        this.setState({
-          application: res,
-        });
 
         this.setState({
-          isGroupsVisible: res.organizationObj.accountItems?.some((item) => item.name === "Groups" && item.visible),
+          application: res.data,
         });
       });
   }
 
+  getUserOrganization() {
+    return this.state.organizations.filter(organization => organization.name === this.state.user.owner)[0];
+  }
+
+  isGroupsVisible() {
+    const organization = this.getUserOrganization();
+    if (!organization) {
+      return false;
+    } else {
+      return organization.accountItems?.some((item) => item.name === "Groups" && item.visible);
+    }
+  }
+
   getGroups(organizationName) {
-    if (this.state.isGroupsVisible) {
+    if (this.isGroupsVisible()) {
       GroupBackend.getGroups(organizationName)
         .then((res) => {
           if (res.status === "ok") {
@@ -319,7 +331,7 @@ class UserEditPage extends React.Component {
             })}
             >
               {
-                this.state.groups?.map((group) => <Option key={group.name} value={group.name}>
+                this.state.groups?.map((group) => <Option key={group.name} value={`${group.owner}/${group.name}`}>
                   <Space>
                     {group.type === "Physical" ? <UsergroupAddOutlined /> : <HolderOutlined />}
                     {group.displayName}
@@ -401,7 +413,7 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Password"), i18next.t("general:Password - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <PasswordModal user={this.state.user} organization={this.state.application?.organizationObj} account={this.props.account} disabled={disabled} />
+            <PasswordModal user={this.state.user} organization={this.getUserOrganization()} account={this.props.account} disabled={disabled} />
           </Col>
         </Row>
       );
@@ -442,7 +454,7 @@ class UserEditPage extends React.Component {
                 onChange={(value) => {
                   this.updateUserField("countryCode", value);
                 }}
-                countryCodes={this.state.application?.organizationObj.countryCodes}
+                countryCodes={this.getUserOrganization()?.countryCodes}
               />
               <Input value={this.state.user.phone}
                 style={{width: "70%"}}
@@ -599,10 +611,10 @@ class UserEditPage extends React.Component {
           </Col>
           <Col span={22} >
             {
-              this.state.application?.organizationObj.tags?.length > 0 ? (
+              this.getUserOrganization()?.tags?.length > 0 ? (
                 <Select virtual={false} style={{width: "100%"}} value={this.state.user.tag}
                   onChange={(value => {this.updateUserField("tag", value);})}
-                  options={this.state.application.organizationObj.tags?.map((tag) => {
+                  options={this.getUserOrganization()?.tags?.map((tag) => {
                     const tokens = tag.split("|");
                     const value = tokens[0];
                     const displayValue = Setting.getLanguage() !== "zh" ? tokens[0] : tokens[1];
@@ -791,10 +803,23 @@ class UserEditPage extends React.Component {
                 {
                   (this.state.application === null || this.state.user === null) ? null : (
                     this.state.application?.providers.filter(providerItem => Setting.isProviderVisible(providerItem)).map((providerItem) =>
-                      (providerItem.provider.category === "OAuth") ? (
-                        <OAuthWidget key={providerItem.name} labelSpan={(Setting.isMobile()) ? 10 : 3} user={this.state.user} application={this.state.application} providerItem={providerItem} account={this.props.account} onUnlinked={() => {return this.unlinked();}} />
+                      (providerItem.provider.category === "OAuth" || providerItem.provider.category === "Web3") ? (
+                        <OAuthWidget
+                          key={providerItem.name}
+                          labelSpan={(Setting.isMobile()) ? 10 : 3}
+                          user={this.state.user}
+                          application={this.state.application}
+                          providerItem={providerItem}
+                          account={this.props.account}
+                          onUnlinked={() => {return this.unlinked();}} />
                       ) : (
-                        <SamlWidget key={providerItem.name} labelSpan={(Setting.isMobile()) ? 10 : 3} user={this.state.user} application={this.state.application} providerItem={providerItem} onUnlinked={() => {return this.unlinked();}} />
+                        <SamlWidget
+                          key={providerItem.name}
+                          labelSpan={(Setting.isMobile()) ? 10 : 3}
+                          user={this.state.user}
+                          application={this.state.application}
+                          providerItem={providerItem}
+                          onUnlinked={() => {return this.unlinked();}} />
                       )
                     )
                   )
@@ -875,7 +900,7 @@ class UserEditPage extends React.Component {
               {Setting.getLabel(i18next.t("mfa:Multi-factor authentication"), i18next.t("mfa:Multi-factor authentication - Tooltip "))} :
             </Col>
             <Col span={22} >
-              <Card title={i18next.t("mfa:Multi-factor methods")}
+              <Card size="small" title={i18next.t("mfa:Multi-factor methods")}
                 extra={this.state.multiFactorAuths?.some(mfaProps => mfaProps.enabled) ?
                   <PopconfirmModal
                     text={i18next.t("general:Disable")}
@@ -971,12 +996,12 @@ class UserEditPage extends React.Component {
         {
           imgUrl ?
             <a target="_blank" rel="noreferrer" href={imgUrl} style={{marginBottom: "10px"}}>
-              <img src={imgUrl} alt={imgUrl} height={90} style={{marginBottom: "20px"}} />
+              <AccountAvatar src={imgUrl} alt={imgUrl} size={90} style={{marginBottom: "20px"}} />
             </a>
             :
             <Col style={{height: "78%", border: "1px dotted grey", borderRadius: 3, marginBottom: 5}}>
               <div style={{fontSize: 30, margin: 10}}>+</div>
-              <div style={{verticalAlign: "middle", marginBottom: 10}}>{`请上传${title}...`}</div>
+              <div style={{verticalAlign: "middle", marginBottom: 10}}>{`Upload ${title}...`}</div>
             </Col>
         }
         <CropperDivModal disabled={disabled} tag={tag} setTitle={set} buttonText={`${title}...`} title={title} user={this.state.user} organization={this.state.organizations.find(organization => organization.name === this.state.organizationName)} />
@@ -995,7 +1020,7 @@ class UserEditPage extends React.Component {
         </div>
       } style={(Setting.isMobile()) ? {margin: "5px"} : {}} type="inner">
         {
-          this.state.application?.organizationObj.accountItems?.map(accountItem => {
+          this.getUserOrganization()?.accountItems?.map(accountItem => {
             return (
               <React.Fragment key={accountItem.name}>
                 {
